@@ -110,8 +110,6 @@ func TestOTPL(t *testing.T) {
 
 		PTest{Name: "fail-unknown-fields", Test: func(t *testing.T, f *testFixture) {
 
-			t.Skipf("WIP")
-
 			client := f.setupProject(t, f.Projects.HTTPServer().Merge(filemap.FileMap{
 				"config/cluster1/singularity.json": `
 				{
@@ -135,7 +133,15 @@ func TestOTPL(t *testing.T) {
 					"loadBalanced": false
 				}`,
 			}))
-			client.MustRun(t, "version", nil)
+
+			flags := &sousFlags{
+				kind:    "http-service",
+				repo:    "github.com/build-init-deploy-user/project1",
+				tag:     "1.2.3",
+				cluster: "cluster1",
+			}
+
+			client.MustFail(t, "init", flags.SousInitFlags(), "-use-otpl-deploy")
 		}},
 	)
 }
