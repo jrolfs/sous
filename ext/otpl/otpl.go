@@ -3,6 +3,7 @@
 package otpl
 
 import (
+	"encoding/json"
 	"path"
 	"strconv"
 	"sync"
@@ -163,16 +164,22 @@ func getClusterAndFlavor(s *otplDeployConfig) (string, string) {
 // called singularity.json, and optionally an additional file called
 // singularity-requst.json.
 func (mp *ManifestParser) parseSingleOTPLConfig(wd shell.Shell) *otplDeployConfig {
-	v := SingularityJSON{}
 	if !wd.Exists("singularity.json") {
 		messages.ReportLogFieldsMessageToConsole("no singularity.json present", logging.WarningLevel, mp.Log, wd.Dir())
 		return nil
 	}
-	if err := wd.JSON(&v, "cat", "singularity.json"); err != nil {
-		messages.ReportLogFieldsMessageToConsole("error reading path", logging.WarningLevel, mp.Log, path.Join(wd.Dir(),
-			"singularity.json"), err)
+	rawJSON, err := wd.Stdout("cat", "singularity.json")
+	if err != nil {
+		messages.ReportLogFieldsMessageToConsole("error reading path", logging.WarningLevel, mp.Log, path.Join(wd.Dir(), "singularity.json"), err)
 		return nil
 	}
+
+	v, err := parseSingularityJSON(rawJSON)
+	if err != nil {
+		messages.ReportLogFieldsMessageToConsole("error parsing singularity.json", logging.WarningLevel, mp.Log, path.Join(wd.Dir(), "singularity.json"), err)
+		return nil
+	}
+
 	if v.Env == nil {
 		v.Env = map[string](string){}
 	}
@@ -186,17 +193,35 @@ func (mp *ManifestParser) parseSingleOTPLConfig(wd shell.Shell) *otplDeployConfi
 			},
 		},
 	}
-	request := SingularityRequestJSON{}
 	if !wd.Exists("singularity-request.json") {
 		messages.ReportLogFieldsMessageToConsole("no singularity-request.json", logging.WarningLevel, mp.Log, wd.Dir())
 		return deploySpec
 	}
-	if err := wd.JSON(&request, "cat", "singularity-request.json"); err != nil {
-		messages.ReportLogFieldsMessageToConsole("failed to read singularity-request.json: "+err.Error(), logging.WarningLevel,
-			mp.Log, err)
+	rawSRJSON, err := wd.Stdout("cat", "singularity-request.json")
+	if err != nil {
+		messages.ReportLogFieldsMessageToConsole("failed to read singularity-request.json: "+err.Error(), logging.WarningLevel, mp.Log, err)
 		return deploySpec
 	}
+
+	request, err := parseSingularityRequestJSON(rawSRJSON)
+	if err != nil {
+		messages.ReportLogFieldsMessageToConsole("error parsing singularity-request.json", logging.WarningLevel, mp.Log, path.Join(wd.Dir(), "singularity-request.json"), err)
+		return nil
+	}
+
 	deploySpec.Spec.NumInstances = request.Instances
 	deploySpec.Owners = request.Owners
 	return deploySpec
+}
+
+func parseSingularityJSON(rawJSON string) (SingularityJSON, error) {
+	v := SingularityJSON{}
+	err := json.Unmarshal([]byte(rawJSON), &v)
+	return v, err
+}
+
+func parseSingularityRequestJSON(rawJSON string) (SingularityRequestJSON, error) {
+	v := SingularityRequestJSON{}
+	err := json.Unmarshal([]byte(rawJSON), &v)
+	return v, err
 }
